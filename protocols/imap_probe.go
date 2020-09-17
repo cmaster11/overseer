@@ -128,6 +128,10 @@ func (s *IMAPTest) RunTest(tst test.Test, target string, opts test.Options) erro
 	return nil
 }
 
+func (s *IMAPTest) GetUniqueHashForTest(tst test.Test, opts test.Options) *string {
+	return nil
+}
+
 //
 // Register our protocol-tester.
 //

@@ -156,6 +156,10 @@ func (s *NNTPTest) RunTest(tst test.Test, target string, opts test.Options) erro
 	return nil
 }
 
+func (s *NNTPTest) GetUniqueHashForTest(tst test.Test, opts test.Options) *string {
+	return nil
+}
+
 //
 // Register our protocol-tester.
 //

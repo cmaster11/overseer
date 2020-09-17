@@ -154,6 +154,10 @@ func (s *POP3STest) RunTest(tst test.Test, target string, opts test.Options) err
 	return nil
 }
 
+func (s *POP3STest) GetUniqueHashForTest(tst test.Test, opts test.Options) *string {
+	return nil
+}
+
 //
 // Register our protocol-tester.
 //

@@ -32,7 +32,8 @@ import (
 
 // TemplateSubject is our text/template which is used to generate the email
 // subject to the user.
-var TemplateSubject = `Overseer [
+var TemplateSubject = template.Must(template.New("tmpl").Parse(strings.TrimSpace(`
+Overseer [
 {{- if .error -}}
 	ERR
 	{{- if .isDedup -}}
@@ -47,11 +48,12 @@ var TemplateSubject = `Overseer [
 {{- end -}}
 ]
 {{- if .tag}} ({{.tag}}){{- end -}}
-: {{.input}} ({{.date}})`
+: {{if .testLabel}}{{.testLabel}}{{else}}{{.input}}{{end}} ({{.date}})
+`)))
 
 // TemplateBody is our text/template which is used to generate the email
 // notification to the user.
-var TemplateBody = `
+var TemplateBody = template.Must(template.New("tmpl").Parse(strings.TrimSpace(`
 Overseer: 
 {{- if .error }} Error
 {{- if .isDedup}} (duplicated){{end -}}
@@ -67,12 +69,18 @@ Details: {{.details}}
 {{- end}}
 
 Tag: {{if .tag}}{{.tag}}{{else}}None{{end}}
+{{- if .testLabel}}
+Test label: {{.testLabel}}
+{{- end}}
 Input: {{.input}}
 
 Target: {{ .target }}
 Type: {{ .type }}
-Date: {{ .date }}
-`
+Time: {{ .date }}
+{{- if .firstErrorTimeDate}}
+First error time: {{.firstErrorTimeDate}}
+{{- end}}
+`)))
 
 type EmailBridge struct {
 	Sender *utils.EmailSender
@@ -82,6 +90,27 @@ type EmailBridge struct {
 
 	SendTestSuccess   bool
 	SendTestRecovered bool
+}
+
+func getTemplateMapFromTestResult(testResult *test.Result) map[string]interface{} {
+	firstErrorTimeDate := ""
+	if testResult.FirstErrorTime != nil {
+		firstErrorTimeDate = time.Unix(*testResult.FirstErrorTime, 0).UTC().String()
+	}
+
+	return map[string]interface{}{
+		"error":              testResult.Error,
+		"isDedup":            testResult.IsDedup,
+		"recovered":          testResult.Recovered,
+		"tag":                testResult.Tag,
+		"target":             testResult.Target,
+		"input":              testResult.Input,
+		"type":               testResult.Type,
+		"date":               time.Unix(testResult.Time, 0).UTC().String(),
+		"firstErrorTimeDate": firstErrorTimeDate,
+		"details":            testResult.Details,
+		"testLabel":          testResult.TestLabel,
+	}
 }
 
 //
@@ -114,17 +143,7 @@ func (bridge *EmailBridge) Process(msg []byte) {
 
 	fmt.Printf("Processing result: %+v\n", testResult)
 
-	templateMap := map[string]interface{}{
-		"error":     testResult.Error,
-		"isDedup":   testResult.IsDedup,
-		"recovered": testResult.Recovered,
-		"tag":       testResult.Tag,
-		"target":    testResult.Target,
-		"input":     testResult.Input,
-		"type":      testResult.Type,
-		"date":      time.Now().UTC().String(),
-		"details":   testResult.Details,
-	}
+	templateMap := getTemplateMapFromTestResult(testResult)
 
 	//
 	// Render our template into a buffer.
@@ -132,10 +151,8 @@ func (bridge *EmailBridge) Process(msg []byte) {
 	var subject, body string
 
 	{
-		src := string(TemplateSubject)
-		t := template.Must(template.New("tmpl").Parse(src))
 		buf := &bytes.Buffer{}
-		err = t.Execute(buf, templateMap)
+		err = TemplateSubject.Execute(buf, templateMap)
 		if err != nil {
 			fmt.Printf("Failed to compile email-template subject %s\n", err.Error())
 			return
@@ -145,10 +162,8 @@ func (bridge *EmailBridge) Process(msg []byte) {
 	}
 
 	{
-		src := strings.TrimSpace(string(TemplateBody))
-		t := template.Must(template.New("tmpl").Parse(src))
 		buf := &bytes.Buffer{}
-		err = t.Execute(buf, templateMap)
+		err = TemplateBody.Execute(buf, templateMap)
 		if err != nil {
 			fmt.Printf("Failed to compile email-template body %s\n", err.Error())
 			return

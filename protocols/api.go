@@ -40,6 +40,8 @@ type ProtocolTest interface {
 	RunTest(tst test.Test, target string, opts test.Options) error
 
 	ShouldResolveHostname() bool
+
+	GetUniqueHashForTest(tst test.Test, opts test.Options) *string
 }
 
 // This is a map of known-tests.

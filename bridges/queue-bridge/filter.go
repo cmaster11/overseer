@@ -15,6 +15,8 @@ Test results can be filtered using all the following keys:
 	- type (regex): 		type=k8s-event
 	- tag (regex): 			tag=my-k8s-cluster
 							tag=!my-k8s-cluster <- this will match anything that does NOT match 'my-k8s-cluster'
+	- testLabel (regex):	testLabel=A\sLabel
+
 	- input (regex)
 	- target (regex): 		target=10\.0\.123\.111
 							target=my-namespace/Job/my-cronjob
@@ -30,6 +32,7 @@ Notes:
 type resultFilter struct {
 	Type      *k8seventwatcher.Regexp
 	Tag       *k8seventwatcher.Regexp
+	TestLabel *k8seventwatcher.Regexp
 	Input     *k8seventwatcher.Regexp
 	Target    *k8seventwatcher.Regexp
 	Error     *k8seventwatcher.Regexp
@@ -43,6 +46,9 @@ func (f *resultFilter) Matches(result *test.Result) bool {
 		return false
 	}
 	if f.Tag != nil && !f.Tag.MatchString(result.Tag) {
+		return false
+	}
+	if f.TestLabel != nil && (result.TestLabel == nil || !f.TestLabel.MatchString(*result.TestLabel)) {
 		return false
 	}
 	if f.Input != nil && !f.Input.MatchString(result.Input) {
@@ -140,6 +146,8 @@ func newResultFilterFromQuery(queryString string) (*resultFilter, error) {
 				filter.Type = queryRegex
 			case "tag":
 				filter.Tag = queryRegex
+			case "testLabel":
+				filter.TestLabel = queryRegex
 			case "input":
 				filter.Input = queryRegex
 			case "target":

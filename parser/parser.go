@@ -317,7 +317,9 @@ func (s *Parser) ParseLine(input string, cb ParsedTest) (test.Test, error) {
 	result.Target = testTarget
 	result.Type = testType
 	result.Input = input
-	result.Arguments = s.ParseArguments(input)
+
+	arguments := s.ParseArguments(input)
+	result.Arguments = make(map[string]string)
 
 	//
 	// See which arguments the object supports
@@ -329,8 +331,7 @@ func (s *Parser) ParseLine(input string, cb ParsedTest) (test.Test, error) {
 	//
 	// For each argument which was supplied..
 	//
-	for arg, val := range result.Arguments {
-
+	for arg, val := range arguments {
 		switch arg {
 		// Is there a custom per-test override?
 		case "retries":
@@ -343,9 +344,6 @@ func (s *Parser) ParseLine(input string, cb ParsedTest) (test.Test, error) {
 			}
 			maxRetriesUInt := uint(maxRetries)
 			result.MaxRetries = &maxRetriesUInt
-
-			// We don't want to pass a non-test var to the actual test
-			delete(result.Arguments, arg)
 			continue
 
 			// Do not re-trigger same errors for the specified amount of time, or until test succeeds again
@@ -360,9 +358,32 @@ func (s *Parser) ParseLine(input string, cb ParsedTest) (test.Test, error) {
 			}
 
 			result.DedupDuration = &duration
+			continue
 
-			// We don't want to pass a non-test var to the actual test
-			delete(result.Arguments, arg)
+			// Do not trigger same errors unless they have been happening for this defined minimum duration
+		case "min-duration":
+			duration, err := time.ParseDuration(val)
+			if err != nil {
+				return result, fmt.Errorf("non-duration argument '%s' for test-type '%s' in input '%s'", arg, testType, input)
+			}
+
+			if duration < 0 {
+				return result, fmt.Errorf("duration argument '%s' for test-type '%s' in input '%s' must be > 0", arg, testType, input)
+			}
+
+			result.MinDuration = &duration
+			continue
+
+			// Expire min-duration cache by this lifetime factor
+		case "min-duration-cache-factor":
+			factor64, err := strconv.ParseUint(val, 10, 32)
+			if err != nil {
+				return result, fmt.Errorf("non-uint argument '%s' for test-type '%s' in input '%s'", arg, testType, input)
+			}
+
+			factor := uint(factor64)
+
+			result.MinDurationCacheFactor = factor
 			continue
 
 			// Override worker-default timeout
@@ -377,9 +398,6 @@ func (s *Parser) ParseLine(input string, cb ParsedTest) (test.Test, error) {
 			}
 
 			result.Timeout = &duration
-
-			// We don't want to pass a non-test var to the actual test
-			delete(result.Arguments, arg)
 			continue
 
 		case "pt-duration", "period-test-duration":
@@ -392,9 +410,6 @@ func (s *Parser) ParseLine(input string, cb ParsedTest) (test.Test, error) {
 			}
 
 			result.PeriodTestDuration = &duration
-
-			// We don't want to pass a non-test var to the actual test
-			delete(result.Arguments, arg)
 			continue
 		case "pt-sleep", "period-test-sleep":
 			duration, err := time.ParseDuration(val)
@@ -406,9 +421,6 @@ func (s *Parser) ParseLine(input string, cb ParsedTest) (test.Test, error) {
 			}
 
 			result.PeriodTestSleep = duration
-
-			// We don't want to pass a non-test var to the actual test
-			delete(result.Arguments, arg)
 			continue
 		case "pt-threshold", "period-test-threshold":
 			percentage, err := utils.ParsePercentage(val)
@@ -417,9 +429,6 @@ func (s *Parser) ParseLine(input string, cb ParsedTest) (test.Test, error) {
 			}
 
 			result.PeriodTestThreshold = &percentage
-
-			// We don't want to pass a non-test var to the actual test
-			delete(result.Arguments, arg)
 			continue
 		case "max-targets":
 			maxTargets, err := strconv.ParseInt(val, 10, 32)
@@ -428,9 +437,10 @@ func (s *Parser) ParseLine(input string, cb ParsedTest) (test.Test, error) {
 			}
 
 			result.MaxTargetsCount = int(maxTargets)
-
-			// We don't want to pass a non-test var to the actual test
-			delete(result.Arguments, arg)
+			continue
+		case "test-label":
+			valCopy := val
+			result.TestLabel = &valCopy
 			continue
 		}
 
@@ -453,6 +463,7 @@ func (s *Parser) ParseLine(input string, cb ParsedTest) (test.Test, error) {
 			return result, fmt.Errorf("unsupported argument '%s' for test-type '%s' in input '%s' - did not match pattern '%s'", arg, testType, input, pattern)
 		}
 
+		result.Arguments[arg] = val
 	}
 
 	//

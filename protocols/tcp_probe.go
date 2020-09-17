@@ -162,6 +162,10 @@ func (s *TCPTest) RunTest(tst test.Test, target string, opts test.Options) error
 	return nil
 }
 
+func (s *TCPTest) GetUniqueHashForTest(tst test.Test, opts test.Options) *string {
+	return nil
+}
+
 //
 // Register our protocol-tester.
 //

@@ -15,7 +15,7 @@ services:
 
   # To execute tests
   overseer-worker:
-    image: 'cmaster11/overseer:1.12.10'
+    image: 'cmaster11/overseer:1.13.3'
     depends_on:
       - redis
     command:
@@ -39,7 +39,7 @@ services:
 
   # To process test results and generate notifications with Notify17 (https://notify17.net)
   overseer-webhook-bridge-n17:
-    image: 'cmaster11/overseer-webhook-bridge:1.12.10'
+    image: 'cmaster11/overseer-webhook-bridge:1.13.3'
     depends_on:
       - redis
     command:

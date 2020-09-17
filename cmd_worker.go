@@ -14,6 +14,7 @@ import (
 	"os"
 	"regexp"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -48,6 +49,12 @@ type workerCmd struct {
 
 	// Prior to retrying a failed test how long should we pause?
 	RetryDelay time.Duration
+
+	// Default min duration
+	MinDuration time.Duration
+
+	// Default min duration cache lifetime factor
+	MinDurationCacheFactor uint
 
 	// Default deduplication duration
 	DedupDuration time.Duration
@@ -168,6 +175,8 @@ func (p *workerCmd) SetFlags(f *flag.FlagSet) {
 	defaults.Retry = true
 	defaults.RetryCount = 5
 	defaults.RetryDelay = 5 * time.Second
+	defaults.MinDuration = 0
+	defaults.MinDurationCacheFactor = 10
 	defaults.DedupDuration = 0
 	defaults.Tag = ""
 	defaults.Timeout = 10 * time.Second
@@ -218,6 +227,9 @@ func (p *workerCmd) SetFlags(f *flag.FlagSet) {
 	f.DurationVar(&p.RetryDelay, "retry-delay", defaults.RetryDelay, "The time to sleep between failing tests.")
 
 	f.DurationVar(&p.DedupDuration, "dedup", defaults.DedupDuration, "The maximum duration of a deduplication.")
+	f.DurationVar(&p.MinDuration, "min-duration", defaults.MinDuration, "The minimum duration of an error, for it to generate an alert.")
+	f.UintVar(&p.MinDurationCacheFactor, "min-duration-cache-factor", defaults.MinDurationCacheFactor,
+		"The lifetime factor for a min-duration error, for it to be reset (e.g. min-duration=2sec, min-duration-cache-factor=10 -> if an error is thrown after 20sec, it will be again considered like a first-time error).")
 
 	// Redis
 	f.StringVar(&p.RedisHost, "redis-host", defaults.RedisHost, "Specify the address of the redis queue.")
@@ -235,7 +247,7 @@ func (p *workerCmd) SetFlags(f *flag.FlagSet) {
 }
 
 // notify is used to store the result of a test in our redis queue.
-func (p *workerCmd) notify(testDefinition test.Test, resultError error, details *string) error {
+func (p *workerCmd) notify(testDefinition test.Test, uniqueHash *string, resultError error, details *string) error {
 
 	//
 	// If we don't have a redis-server then return immediately.
@@ -251,12 +263,14 @@ func (p *workerCmd) notify(testDefinition test.Test, resultError error, details 
 	// The message we'll publish will be a JSON hash
 	//
 	testResult := &test.Result{
-		Input:   testDefinition.Input,
-		Target:  testDefinition.Target,
-		Time:    time.Now().Unix(),
-		Type:    testDefinition.Type,
-		Tag:     p.Tag,
-		Details: details,
+		Input:      testDefinition.Input,
+		Target:     testDefinition.Target,
+		Time:       time.Now().Unix(),
+		Type:       testDefinition.Type,
+		Tag:        p.Tag,
+		Details:    details,
+		UniqueHash: uniqueHash,
+		TestLabel:  testDefinition.TestLabel,
 	}
 
 	//
@@ -267,6 +281,99 @@ func (p *workerCmd) notify(testDefinition test.Test, resultError error, details 
 	if resultError != nil {
 		errorString := resultError.Error()
 		testResult.Error = &errorString
+	}
+
+	now := time.Now()
+
+	// If test has a min duration rule, avoid triggering a notification if not needed, or clean the min duration cache if needed.
+	if testDefinition.MinDuration != nil {
+		minDurationSeconds := int64(*testDefinition.MinDuration / time.Second)
+
+		// We need a minimum cache duration, otherwise the min duration test cannot work
+		if testDefinition.MinDurationCacheFactor == 0 {
+			testDefinition.MinDurationCacheFactor = 2
+		}
+
+		hash := testResult.Hash()
+		firstErrorTime := p.getMinDurationFirstErrorTime(hash)
+		testResult.FirstErrorTime = firstErrorTime
+
+		expireDuration := *testDefinition.MinDuration * time.Duration(testDefinition.MinDurationCacheFactor)
+
+		if testResult.Error != nil {
+
+			// With minDuration, we don't want to trigger the notification, unless the test has failed for a long enough amount of time
+			if firstErrorTime != nil {
+				diffFirstError := now.Unix() - *firstErrorTime
+
+				// We want to keep the ORIGINAL error time as alert shown, just extend the expiry time
+				p.setMinDurationFirstErrorTime(hash, *firstErrorTime, expireDuration)
+
+				if diffFirstError < minDurationSeconds {
+					// There is no need to trigger the notification, because not enough time has passed since the error got fired
+					p.verbose(fmt.Sprintf("Skipping notification (minDuration, alert shown %s ago) for test `%s` (%s)\n",
+						time.Duration(diffFirstError)*time.Second,
+						testDefinition.Input, testDefinition.Target))
+					return nil
+				}
+
+				// Let's show the alert!
+				// Mark it as shown
+				p.setMinDurationAlertShown(hash, true, expireDuration)
+
+			} else {
+				p.setMinDurationFirstErrorTime(hash, now.Unix(), expireDuration)
+
+				// Do not throw alert here, because this is the first generated alert
+				return nil
+			}
+
+		} else {
+			// Check if there was any min duration cache
+
+			if firstErrorTime != nil {
+				diffFirstError := now.Unix() - *firstErrorTime
+
+				alertShown := p.getMinDurationAlertShown(hash)
+
+				// Clear the cache because test got resolved
+				p.clearMinDurationFirstErrorTime(hash)
+				p.clearMinDurationAlertShown(hash)
+				testResult.Recovered = true
+
+				// If the error has never been triggered, because min duration did not expire, do not trigger a recovered message
+				if diffFirstError < minDurationSeconds {
+					p.verbose(fmt.Sprintf("Test recovered (min duration not met, skipping recovered message): `%s` (%s)\n",
+						testDefinition.Input, testDefinition.Target))
+					return nil
+				}
+
+				// Check if we want to show the recovered message
+				if !alertShown {
+					p.verbose(fmt.Sprintf("Test recovered (alert not shown, skipping recovered message): `%s` (%s)\n",
+						testDefinition.Input, testDefinition.Target))
+
+					return nil
+				}
+
+				p.verbose(fmt.Sprintf("Test recovered (min duration cache cleared, showing recovered message): `%s` (%s)\n",
+					testDefinition.Input, testDefinition.Target))
+
+			} else {
+
+				/*
+					If we're here, a recovered message got generated for an error that has never been seen.
+					Skip it, as it is probably a broken test.
+				*/
+
+				p.verbose(fmt.Sprintf("Test recovered (min duration not met, original error never seen): `%s` (%s)\n",
+					testDefinition.Input, testDefinition.Target))
+				return nil
+
+			}
+
+		}
+
 	}
 
 	// If test has a deduplication rule, avoid re-triggering a notification if not needed, or clean the dedup cache if needed.
@@ -283,8 +390,7 @@ func (p *workerCmd) notify(testDefinition test.Test, resultError error, details 
 
 			// With dedup, we don't want to trigger same notification, unless we just passed the dedup duration
 			if lastAlertTime != nil {
-				now := time.Now().Unix()
-				diffLastAlert := now - *lastAlertTime
+				diffLastAlert := now.Unix() - *lastAlertTime
 				dedupDurationSeconds := int64(*testDefinition.DedupDuration / time.Second)
 
 				if diffLastAlert < dedupDurationSeconds {
@@ -312,7 +418,7 @@ func (p *workerCmd) notify(testDefinition test.Test, resultError error, details 
 				p.clearDeduplicationLastAlertTime(hash)
 				testResult.Recovered = true
 
-				p.verbose(fmt.Sprintf("Test recovered: `%s` (%s)\n",
+				p.verbose(fmt.Sprintf("Test recovered (dedup cache cleared): `%s` (%s)\n",
 					testDefinition.Input, testDefinition.Target))
 			}
 
@@ -437,6 +543,107 @@ func (p *workerCmd) clearDeduplicationLastAlertTime(hash string) {
 	}
 }
 
+func (p *workerCmd) getMinDurationFirstErrorKey(hash string) string {
+	return fmt.Sprintf("overseer.min-duration-first-error.%s", hash)
+}
+
+func (p *workerCmd) getMinDurationFirstErrorTime(hash string) *int64 {
+	if p._r == nil {
+		return nil
+	}
+
+	cacheKey := p.getMinDurationFirstErrorKey(hash)
+	cacheTime, err := p._r.Get(cacheKey).Int64()
+	if err != nil {
+		if err == redis.Nil {
+			// Key just does not exist
+			return nil
+		}
+
+		fmt.Printf("Failed to get min-duration alert shown key: %s\n", err)
+		return nil
+	}
+
+	return &cacheTime
+}
+
+func (p *workerCmd) setMinDurationFirstErrorTime(hash string, errorTime int64, expiry time.Duration) {
+	if p._r == nil {
+		return
+	}
+
+	cacheKey := p.getMinDurationFirstErrorKey(hash)
+	_, err := p._r.Set(cacheKey, errorTime, expiry).Result()
+	if err != nil {
+		fmt.Printf("Failed to set min-duration alert shown key: %s\n", err)
+	}
+}
+
+func (p *workerCmd) clearMinDurationFirstErrorTime(hash string) {
+	if p._r == nil {
+		return
+	}
+
+	cacheKey := p.getMinDurationFirstErrorKey(hash)
+	_, err := p._r.Del(cacheKey).Result()
+	if err != nil {
+		fmt.Printf("Failed to clear min-duration alert shown key: %s\n", err)
+	}
+}
+
+func (p *workerCmd) getMinDurationAlertShownKey(hash string) string {
+	return fmt.Sprintf("overseer.min-duration-alert-shown.%s", hash)
+}
+
+func (p *workerCmd) getMinDurationAlertShown(hash string) bool {
+	if p._r == nil {
+		return false
+	}
+
+	cacheKey := p.getMinDurationAlertShownKey(hash)
+	alertShown, err := p._r.Get(cacheKey).Int64()
+	if err != nil {
+		if err == redis.Nil {
+			// Key just does not exist
+			return false
+		}
+
+		fmt.Printf("Failed to get min-duration alert shown key: %s\n", err)
+		return false
+	}
+
+	return alertShown > 0
+}
+
+func (p *workerCmd) setMinDurationAlertShown(hash string, shown bool, expiry time.Duration) {
+	if p._r == nil {
+		return
+	}
+
+	alertShown := 0
+	if shown {
+		alertShown = 1
+	}
+
+	cacheKey := p.getMinDurationAlertShownKey(hash)
+	_, err := p._r.Set(cacheKey, alertShown, expiry).Result()
+	if err != nil {
+		fmt.Printf("Failed to set min-duration alert shown key: %s\n", err)
+	}
+}
+
+func (p *workerCmd) clearMinDurationAlertShown(hash string) {
+	if p._r == nil {
+		return
+	}
+
+	cacheKey := p.getMinDurationAlertShownKey(hash)
+	_, err := p._r.Del(cacheKey).Result()
+	if err != nil {
+		fmt.Printf("Failed to clear min-duration alert shown key: %s\n", err)
+	}
+}
+
 // alphaNumeric removes all non alpha-numeric characters from the
 // given string, and returns it.  We replace the characters that
 // are invalid with `_`.
@@ -487,12 +694,25 @@ func (p *workerCmd) runTest(workerIdx uint, tst test.Test, opts test.Options) er
 	workerPrefix := fmt.Sprintf("[W%d] ", workerIdx)
 
 	// Create a map for metric-recording.
+	metricsLock := new(sync.Mutex)
 	metrics := map[string]string{}
 
 	// If there are no deduplication rules, assign the default worker one. Unless the test is a period-test
 	if tst.DedupDuration == nil && tst.PeriodTestDuration == nil && p.DedupDuration > 0 {
 		// Assign a default dedup duration
 		tst.DedupDuration = &p.DedupDuration
+	}
+
+	// If there are no min duration rules, assign the default worker one. Unless the test is a period-test
+	if tst.MinDuration == nil && tst.PeriodTestDuration == nil && p.MinDuration > 0 {
+		// Assign a default min duration
+		tst.MinDuration = &p.MinDuration
+	}
+
+	// If there are no min duration cache rules, assign the default worker one. Unless the test is a period-test
+	if tst.MinDurationCacheFactor == 0 && tst.PeriodTestDuration == nil && p.MinDurationCacheFactor > 0 {
+		// Assign a default min duration
+		tst.MinDurationCacheFactor = p.MinDurationCacheFactor
 	}
 
 	//
@@ -544,7 +764,7 @@ func (p *workerCmd) runTest(workerIdx uint, tst test.Test, opts test.Options) er
 			//
 			// Notify the world about our DNS-failure.
 			//
-			p.notify(tst, fmt.Errorf("failed to resolve name %s", testTarget), nil)
+			p.notify(tst, nil, fmt.Errorf("failed to resolve name %s", testTarget), nil)
 
 			//
 			// Otherwise we're done.
@@ -559,7 +779,9 @@ func (p *workerCmd) runTest(workerIdx uint, tst test.Test, opts test.Options) er
 		diff := fmt.Sprintf("%f", float64(duration)/float64(time.Millisecond))
 
 		// Record time in our metric hash
+		metricsLock.Lock()
 		metrics["overseer.dns."+p.alphaNumeric(testTarget)+".duration"] = diff
+		metricsLock.Unlock()
 
 		//
 		// We'll run the test against each of the resulting IPv4 and
@@ -586,6 +808,8 @@ func (p *workerCmd) runTest(workerIdx uint, tst test.Test, opts test.Options) er
 	}
 
 	if tst.MaxTargetsCount > 0 && len(targets) > tst.MaxTargetsCount {
+		// By sorting we have a higher chance of targeting the same target
+		sort.Strings(targets)
 		targets = targets[:tst.MaxTargetsCount]
 	}
 
@@ -598,8 +822,10 @@ func (p *workerCmd) runTest(workerIdx uint, tst test.Test, opts test.Options) er
 		timeB := time.Now()
 		duration := timeB.Sub(startTime)
 		diff := fmt.Sprintf("%f", float64(duration)/float64(time.Millisecond))
+		metricsLock.Lock()
 		metrics[p.formatMetrics(tst, "duration")] = diff
 		metrics[p.formatMetrics(tst, "attempts")] = fmt.Sprintf("%d", attempts)
+		metricsLock.Unlock()
 
 		//
 		// Post the result of the test to the notifier.
@@ -628,7 +854,7 @@ func (p *workerCmd) runTest(workerIdx uint, tst test.Test, opts test.Options) er
 		// Now we can trigger the notification with our updated
 		// copy of the test.
 		//
-		p.notify(tstCopy, result, details)
+		p.notify(tstCopy, tmp.GetUniqueHashForTest(tstCopy, opts), result, details)
 	}
 
 	wg := &sync.WaitGroup{}
@@ -666,7 +892,13 @@ func (p *workerCmd) runTest(workerIdx uint, tst test.Test, opts test.Options) er
 				for time.Now().Before(timeEnd) {
 					iteration++
 					iterationStartTime := time.Now()
-					err := tmp.RunTest(tst, target, opts)
+
+					// Copy opts
+					currentOpts := opts
+					currentOpts.PeriodTestIndex = iteration
+					currentOpts.PeriodTestStartTime = iterationStartTime.UnixNano() / int64(time.Millisecond)
+					err := tmp.RunTest(tst, target, currentOpts)
+
 					iterationDuration := time.Since(iterationStartTime)
 					iterationElapsedString := fmt.Sprintf("%.2fms", float64(iterationDuration)/float64(time.Millisecond))
 					if err != nil {

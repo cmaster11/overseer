@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"fmt"
 	"io/ioutil"
 	"os"
 	"strings"
@@ -532,6 +533,70 @@ func TestMaxRetries(t *testing.T) {
 		if tst.MaxRetries != nil && *tst.MaxRetries != uint(idx) {
 			t.Errorf("Invalid maxRetries number. Expected %d, got %d", idx, *tst.MaxRetries)
 		}
+	}
+}
+
+func TestMinDuration(t *testing.T) {
+	tests := []string{
+		"http://example.com/ must run http with min-duration 5m",
+	}
+
+	// Create a parser
+	p := New()
+
+	// Parse each line
+	for _, input := range tests {
+
+		tst, err := p.ParseLine(input, nil)
+		if err != nil {
+			t.Errorf("We did not expect an error parsing %s - got %s!", input, err)
+
+			continue
+		}
+
+		if tst.MinDuration == nil || *tst.MinDuration == 0 {
+			t.Errorf("Invalid minDuration number, got %d", *tst.MinDuration)
+		}
+	}
+}
+
+func TestTestLabel(t *testing.T) {
+	tests := []string{
+		"http://example.com/ must run http with min-duration 5m with test-label \"Hello 0\"",
+		"http://example.com/ must run http with min-duration 5m with test-label \"Hello 1\"",
+		"http://example.com/ must run http with min-duration 5m with test-label \"Hello 2\"",
+	}
+
+	// Create a parser
+	p := New()
+
+	// Parse each line
+	for idx, input := range tests {
+
+		tst, err := p.ParseLine(input, nil)
+		if err != nil {
+			t.Errorf("We did not expect an error parsing %s - got %s!", input, err)
+
+			continue
+		}
+
+		expected := fmt.Sprintf("Hello %d", idx)
+		if tst.TestLabel != nil && *tst.TestLabel != expected {
+			t.Errorf("Invalid testLabel. Expected %s, got %s", expected, *tst.TestLabel)
+		}
+	}
+}
+
+func TestParseArguments(t *testing.T) {
+	input := "http://example.com/ must run http with min-duration 5m with test-label \"Hello 0\""
+
+	// Create a parser
+	p := New()
+
+	arguments := p.ParseArguments(input)
+
+	if arguments["test-label"] != "Hello 0" {
+		t.Errorf("Invalid testLabel")
 	}
 }
 

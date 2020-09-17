@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"strconv"
 	"time"
 
 	"github.com/cmaster11/overseer/test"
@@ -15,6 +16,7 @@ import (
 
 // DumbTest is our object.
 type DumbTest struct {
+	internalCounter uint
 }
 
 // Arguments returns the names of arguments which this protocol-test
@@ -22,8 +24,11 @@ type DumbTest struct {
 // their values.
 func (s *DumbTest) Arguments() map[string]string {
 	known := map[string]string{
-		"duration-min": `^[+]?([0-9]*(\.[0-9]*)?[a-z]+)+$`,
-		"duration-max": `^[+]?([0-9]*(\.[0-9]*)?[a-z]+)+$`,
+		"dumb-duration-min": `^[+]?([0-9]*(\.[0-9]*)?[a-z]+)+$`,
+		"dumb-duration-max": `^[+]?([0-9]*(\.[0-9]*)?[a-z]+)+$`,
+		// Fails at specific counter index
+		// Counter is reset on failure
+		"fail-at": `^\d+$`,
 	}
 	return known
 }
@@ -40,7 +45,9 @@ Dumb Tester
 -------------
 Performs a test of random duration and result.
 
-	fake-name must run dumb-test with duration-min 2s with duration-max 10s
+	fake-name must run dumb-test with dumb-duration-min 2s with dumb-duration-max 10s
+
+If fail-at is defined, fails only at the specified counter index, then resets counter.
 `
 	return str
 }
@@ -52,32 +59,55 @@ func (s *DumbTest) RunTest(tst test.Test, target string, opts test.Options) erro
 
 	durationMin := 0 * time.Second
 	durationMax := 5 * time.Second
+	failAtCounter := -1
 
-	if tst.Arguments["duration-min"] != "" {
-		durationMin, err = time.ParseDuration(tst.Arguments["duration-min"])
+	if tst.Arguments["dumb-duration-min"] != "" {
+		durationMin, err = time.ParseDuration(tst.Arguments["dumb-duration-min"])
 		if err != nil {
 			return err
 		}
 		if durationMin < 0 {
-			return fmt.Errorf("duration-min must be > 0")
+			return fmt.Errorf("dumb-duration-min must be > 0")
 		}
 	}
-	if tst.Arguments["duration-max"] != "" {
-		durationMax, err = time.ParseDuration(tst.Arguments["duration-max"])
+	if tst.Arguments["dumb-duration-max"] != "" {
+		durationMax, err = time.ParseDuration(tst.Arguments["dumb-duration-max"])
 		if err != nil {
 			return err
 		}
 		if durationMax < 0 {
-			return fmt.Errorf("duration-max must be > 0")
+			return fmt.Errorf("dumb-duration-max must be > 0")
 		}
+	}
+	if tst.Arguments["fail-at"] != "" {
+		failAtUint64, errParse := strconv.ParseUint(tst.Arguments["fail-at"], 10, 32)
+		if errParse != nil {
+			return errParse
+		}
+		failAtCounter = int(failAtUint64)
 	}
 
 	if durationMax < durationMin {
-		return errors.New("duration-max must be > than duration-min")
+		return errors.New("dumb-duration-max must be >= than dumb-duration-min")
 	}
 
 	fail := rand.Float64() >= 0.5
-	waitFor := time.Duration(rand.Int63n(int64(durationMax-durationMin)) + int64(durationMin))
+	if failAtCounter >= 0 {
+		fail = s.internalCounter >= uint(failAtCounter)
+		if fail {
+			// Reset
+			s.internalCounter = 0
+		} else {
+			s.internalCounter++
+		}
+	}
+
+	diffDuration := int64(durationMax - durationMin)
+	var randDiffDuration int64 = 0
+	if diffDuration > 0 {
+		randDiffDuration = rand.Int63n(diffDuration)
+	}
+	waitFor := time.Duration(randDiffDuration + int64(durationMin))
 
 	time.Sleep(waitFor)
 
@@ -86,6 +116,10 @@ func (s *DumbTest) RunTest(tst test.Test, target string, opts test.Options) erro
 	}
 
 	return nil
+}
+
+func (s *DumbTest) GetUniqueHashForTest(tst test.Test, opts test.Options) *string {
+	return &tst.Target
 }
 
 //

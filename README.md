@@ -163,9 +163,9 @@ an alert will be generated, e.g:
     
 You can also test multiple cases with a dumb test:
 
-    dumb-test1 must run dumb-test with pt-duration 5s with pt-sleep 200ms with pt-threshold 0% with duration-max 100ms
-    dumb-test2 must run dumb-test with pt-duration 5s with pt-sleep 200ms with pt-threshold 20% with duration-max 100ms
-    dumb-test3 must run dumb-test with pt-duration 5s with pt-sleep 200ms with pt-threshold 40% with duration-max 100ms
+    dumb-test1 must run dumb-test with pt-duration 5s with pt-sleep 200ms with pt-threshold 0% with dumb-duration-max 100ms
+    dumb-test2 must run dumb-test with pt-duration 5s with pt-sleep 200ms with pt-threshold 20% with dumb-duration-max 100ms
+    dumb-test3 must run dumb-test with pt-duration 5s with pt-sleep 200ms with pt-threshold 40% with dumb-duration-max 100ms
     
 If no `pt-sleep` is defined, Overseer will default to the `-period-test-sleep` command line variable value, or to `5s`.
 If no `pt-threshold` is defined, Overseer will default to the `-period-test-threshold` command line variable value, or to `0%`.

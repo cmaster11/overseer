@@ -130,6 +130,10 @@ func (s *PSQLTest) RunTest(tst test.Test, target string, opts test.Options) erro
 	return err
 }
 
+func (s *PSQLTest) GetUniqueHashForTest(tst test.Test, opts test.Options) *string {
+	return nil
+}
+
 //
 // Register our protocol-tester.
 //

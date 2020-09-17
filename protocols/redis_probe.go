@@ -129,6 +129,10 @@ func (s *REDISTest) RunTest(tst test.Test, target string, opts test.Options) err
 	return nil
 }
 
+func (s *REDISTest) GetUniqueHashForTest(tst test.Test, opts test.Options) *string {
+	return nil
+}
+
 //
 // Register our protocol-tester.
 //

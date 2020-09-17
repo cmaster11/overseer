@@ -27,7 +27,7 @@ spec:
               topologyKey: kubernetes.io/hostname
       containers:
         - name: overseer-bridge-queue
-          image: cmaster11/overseer-queue-bridge:1.12.10
+          image: cmaster11/overseer-queue-bridge:1.13.3
           args:
             - -redis-host
             - redis:6379

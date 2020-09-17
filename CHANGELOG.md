@@ -1,5 +1,31 @@
 # Changelog
 
+## [2020/05/30] cmaster11/overseer:1.13.3
+
+* Overseer now supports some new test options:
+    * `min-duration`: when defined, an alert will NOT be triggered until the test error is repeated for AT LEAST `min-duration` time.
+        
+        Example: `https://google.com must run http with min-duration 1m` will not generate alerts until the same test fails for more than a minute.
+        
+    * `test-label`: when defined, offers more flexibility to test result messages, where the field `testLabel` is now passed as it is. 
+        This option is useful to have "clean" test result messages, where the test label can be shown instead of the original test input.
+    
+        Example: `https://google.com must run http with test-label "Google test"`
+
+## [2020/05/11] cmaster11/overseer:1.12.12
+
+* Overseer now supports two new runtime period-test variables for HTTP test:
+
+    * `__pt-index__`: current period test index
+    * `__pt-time-ms__`: current period test start time
+    
+    Example: `https://google.com?testIdx=__pt-index__ must run http with connect-timeout 2.5s with connect-retries 2 with pt-duration 1m with pt-sleep 1s with pt-threshold 0%`
+
+## [2020/05/11] cmaster11/overseer:1.12.11
+
+* Sort targets alphabetically when using `max-targets`, which increases the chance of pointing to the same target
+    on subsequent runs.
+
 ## [2020/05/06] cmaster11/overseer:1.12.10
 
 * HTTP test has new option:

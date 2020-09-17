@@ -218,6 +218,10 @@ func (s *SSLTest) SSLExpiration(host string, verbose bool) (int64, error) {
 	return hours, nil
 }
 
+func (s *SSLTest) GetUniqueHashForTest(tst test.Test, opts test.Options) *string {
+	return nil
+}
+
 // init is used to dynamically register our protocol-tester.
 func init() {
 	Register("ssl", func() ProtocolTest {

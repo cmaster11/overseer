@@ -103,6 +103,10 @@ func (s *TELNETTest) RunTest(tst test.Test, target string, opts test.Options) er
 	return nil
 }
 
+func (s *TELNETTest) GetUniqueHashForTest(tst test.Test, opts test.Options) *string {
+	return nil
+}
+
 //
 // Register our protocol-tester.
 //

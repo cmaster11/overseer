@@ -21,10 +21,10 @@ require (
 	golang.org/x/lint v0.0.0-20191125180803-fdd1cda4f05f // indirect
 	golang.org/x/sys v0.0.0-20191010194322-b09406accb47 // indirect
 	golang.org/x/text v0.3.2 // indirect
-	golang.org/x/tools v0.0.0-20200505023115-26f46d2f7ef8 // indirect
+	golang.org/x/tools v0.0.0-20200529172331-a64b76657301 // indirect
 	gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15 // indirect
 	gopkg.in/yaml.v2 v2.2.4
-	honnef.co/go/tools v0.0.1-2020.1.3 // indirect
+	honnef.co/go/tools v0.0.1-2020.1.4 // indirect
 	k8s.io/api v0.0.0-20190620084959-7cf5895f2711
 	k8s.io/apimachinery v0.0.0-20190612205821-1799e75a0719
 	k8s.io/client-go v0.0.0-20190620085101-78d2af792bab

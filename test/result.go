@@ -25,12 +25,25 @@ type Result struct {
 	// If true, this alert is a duplicate of an ongoing alert
 	IsDedup bool `json:"isDedup"`
 
+	// If not nil, it means this error got triggered after a certain min-duration
+	FirstErrorTime *int64 `json:"firstErrorTime"`
+
 	// If true, this alert has recovered from a previous error
 	Recovered bool `json:"recovered"`
+
+	// It not nil, will be used as hash for this test
+	UniqueHash *string `json:"uniqueHash"`
+
+	// If not nil, describes result with a custom label
+	TestLabel *string `json:"testLabel"`
 }
 
 // Hash generates a unique identifier for the original test (e.g. to deduplicate same results)
 func (result *Result) Hash() string {
+	if result.UniqueHash != nil {
+		return utils.GetMD5Hash(*result.UniqueHash)
+	}
+
 	return utils.GetMD5Hash(result.Input + result.Target + result.Type + result.Tag)
 }
 

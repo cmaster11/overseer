@@ -129,6 +129,10 @@ func (s *K8SSvcTest) RunTest(tst test.Test, target string, opts test.Options) er
 	return nil
 }
 
+func (s *K8SSvcTest) GetUniqueHashForTest(tst test.Test, opts test.Options) *string {
+	return nil
+}
+
 //
 // Register our protocol-tester.
 //

@@ -27,7 +27,7 @@ spec:
               topologyKey: kubernetes.io/hostname
       containers:
         - name: overseer-bridge-webhook-n17
-          image: cmaster11/overseer-webhook-bridge:1.12.10
+          image: cmaster11/overseer-webhook-bridge:1.13.3
           args:
             - -redis-host
             - redis:6379

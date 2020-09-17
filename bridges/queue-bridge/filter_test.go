@@ -28,6 +28,7 @@ func TestNewResultFilterFromQuery(t *testing.T) {
 	testSyntaxOK(t, "recovered=true")
 	testSyntaxOK(t, "type=a.*")
 	testSyntaxOK(t, "tag=a.*")
+	testSyntaxOK(t, "testLabel=My\\slabel.*")
 	testSyntaxOK(t, "input=a.*")
 	testSyntaxOK(t, "target=a.*")
 	testSyntaxOK(t, "error=a.*")
@@ -70,6 +71,8 @@ func TestNewResultFilterFromQuery(t *testing.T) {
 	testMatchOK(t, "recovered=true", &test.Result{Recovered: true})
 	testMatchOK(t, "type=a.*", &test.Result{Type: "asd"})
 	testMatchOK(t, "tag=a.*", &test.Result{Tag: "a2"})
+	testLabel := "My label 123"
+	testMatchOK(t, "testLabel=My\\slabel.*", &test.Result{TestLabel: &testLabel})
 	testMatchOK(t, "input=a.*", &test.Result{Input: "aaaaa"})
 	testMatchOK(t, "target=a.*", &test.Result{Target: "aaaa"})
 	errAAA := "oaaa"

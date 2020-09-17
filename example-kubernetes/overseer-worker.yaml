@@ -28,7 +28,7 @@ spec:
               topologyKey: kubernetes.io/hostname
       containers:
         - name: overseer-worker
-          image: cmaster11/overseer:1.12.10
+          image: cmaster11/overseer:1.13.3
           args:
             - worker
             - -redis-host

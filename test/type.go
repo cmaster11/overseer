@@ -43,6 +43,12 @@ type Test struct {
 	// MaxRetries overrides the global overseer setting for max test retries
 	MaxRetries *uint
 
+	// If not nil, triggers an error for the test only if it fails repeatedly at least for the amount of time defined by this minimum duration
+	MinDuration *time.Duration
+
+	// If not nil, expires min-duration cache by the specified lifetime factor
+	MinDurationCacheFactor uint
+
 	// If not nil, avoid re-triggering the same notification on failure for the defined amount of time, or until test succeeds again
 	DedupDuration *time.Duration
 
@@ -69,6 +75,9 @@ type Test struct {
 
 	// If > 0, tests which resolve hostnames will run only for the first MaxTargetsCount found target
 	MaxTargetsCount int
+
+	// It not nil, describes the test with a custom tag/label
+	TestLabel *string
 }
 
 // Sanitize returns a copy of the input string, but with any password
@@ -112,4 +121,8 @@ type Options struct {
 
 	// Should the protocol-tests run verbosely?
 	Verbose bool
+
+	// If this is a period test, we may want to replace vars in the target address
+	PeriodTestIndex     int
+	PeriodTestStartTime int64
 }

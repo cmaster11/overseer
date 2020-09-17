@@ -253,6 +253,10 @@ func (s *FTPTest) RunTest(tst test.Test, target string, opts test.Options) error
 	return nil
 }
 
+func (s *FTPTest) GetUniqueHashForTest(tst test.Test, opts test.Options) *string {
+	return nil
+}
+
 //
 // Register our protocol-tester.
 //

@@ -136,6 +136,10 @@ func (s *PINGTest) RunTest(tst test.Test, target string, opts test.Options) erro
 	return errors.New("neither IPv4 nor IPv6 address")
 }
 
+func (s *PINGTest) GetUniqueHashForTest(tst test.Test, opts test.Options) *string {
+	return nil
+}
+
 //
 // Register our protocol-tester.
 //
