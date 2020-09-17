@@ -152,6 +152,7 @@ func (bridge *SlackBridge) process(msg []byte) {
 		Username:  "Overseer",
 		IconEmoji: ":eyes:",
 		Channel:   bridge.slackChannel,
+		Text:      titleText.Text,
 		Blocks: []SlackBlock{
 			title,
 			tag,
