@@ -19,6 +19,8 @@ The following bridges are distributed with `overseer`:
 
 * [webhook-bridge](webhook-bridge/)
     * Submits tests via webhook (see [Kubernetes usage example](/example-kubernetes/overseer-bridge-webhook-n17.yaml)).
+* [slack-bridge](slack-bridge/)
+    * Submits tests via webhook (see [Kubernetes usage example](/example-kubernetes/overseer-bridge-slack.optional.yaml)).
 * [email-bridge](email-bridge/)
     * Submits test-failures via email, using SMTP server (see [Kubernetes usage example](/example-kubernetes/overseer-bridge-email.optional.yaml)).
 * [queue-bridge](email-bridge/)

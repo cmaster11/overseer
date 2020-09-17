@@ -1,0 +1,25 @@
+FROM golang:1.15-alpine3.12 as builder
+
+# Install git
+# Git is required for fetching the dependencies.
+RUN apk update && apk upgrade && \
+    apk add --no-cache gcc g++ git ca-certificates && update-ca-certificates
+
+WORKDIR /build
+ADD . .
+
+# Build the binary
+RUN go build -a -o /go/bin/main ./bridges/slack-bridge
+
+############################
+# STEP 2 build a small image
+############################
+FROM alpine:3.12
+
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+
+# Copy our static executable
+COPY --from=builder /go/bin/main /go/bin/main
+RUN chmod a+x /go/bin/main
+
+ENTRYPOINT ["/go/bin/main"]

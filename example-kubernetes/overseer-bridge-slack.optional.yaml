@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: overseer-bridge-slack
+  namespace: overseer
+  labels:
+    app: overseer-bridge-slack
+spec:
+  selector:
+    matchLabels:
+      app: overseer-bridge-slack
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: overseer-bridge-slack
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values:
+                      - overseer-bridge-slack
+              topologyKey: kubernetes.io/hostname
+      containers:
+        - name: overseer-bridge-slack
+          image: cmaster11/overseer-slack-bridge:1.12.8
+          args:
+            - -redis-host
+            - redis:6379
+            - -slack-webhook
+            - "https://hooks.slack.com/services/T1234/xxxx/xxx"
+            - -slack-channel
+            - "#my-channel"
+            # If using the webhook queue to clone test results
+            #  - -redis-queue-key
+            #  - "overseer.results.slack"
+            # If using redis DB
+            #  - -redis-db
+            #  - 1
+            - -send-test-recovered=true
